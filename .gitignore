@@ -1,0 +1,9 @@
+node_modules/
+devdata/
+dist/
+bin/
+installer/runtime-win/
+*.log
+*.zip
+*.tmp
+.DS_Store

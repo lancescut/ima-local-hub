@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImaLocalHub · ima 接入本地大模型</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="hero">
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">iH</div>
+      <div>
+        <h1>ImaLocalHub</h1>
+        <div class="sub">让 ima 知识库使用你自己的大模型 · 本机 / 局域网</div>
+      </div>
+    </div>
+    <div class="hero-status" id="heroStatus"></div>
+  </div>
+</div>
+
+<div class="wrap main">
+
+  <div id="alertBox"></div>
+
+  <!-- 未安装：一步式安装 -->
+  <div id="setupCard" class="card hidden">
+    <h2><span class="no">1</span>环境检测 <button class="btn btn-ghost btn-mini copy" style="margin-left:auto" onclick="redetect()">重新检测</button></h2>
+    <div class="hint">自动检测完成，勾选下方的公网入口方式，确认模型后点击安装即可</div>
+    <div class="chips" id="detectChips"></div>
+
+    <h2 class="mt12"><span class="no">2</span>公网入口（ima 服务器需要能访问到你）</h2>
+    <div id="entranceOpts"></div>
+
+    <h2 class="mt12"><span class="no">3</span>模型后端</h2>
+    <div class="hint">检测到的本机模型已自动就绪；也可添加局域网 / 远程 OpenAI 兼容服务</div>
+    <label class="f">默认对话模型</label>
+    <select id="modelSel"></select>
+    <div class="row mt8">
+      <button class="btn btn-ghost btn-mini" onclick="toggleRemote()">＋ 添加远程后端（可选）</button>
+    </div>
+    <div id="remoteForm" class="hidden">
+      <label class="f">服务地址（如 http://192.168.1.10:8000）</label>
+      <input type="text" id="rUrl" placeholder="http://192.168.1.10:8000">
+      <label class="f">API Key（没有可留空）</label>
+      <input type="text" id="rKey" placeholder="sk-...">
+      <label class="f">模型名（如 glm-4.6）</label>
+      <input type="text" id="rModel" placeholder="glm-4.6">
+      <div class="row mt8"><button class="btn btn-ghost btn-mini" onclick="addRemote()">加入安装</button><span id="rMsg" style="font-size:12.5px;color:var(--gray)"></span></div>
+    </div>
+
+    <div style="text-align:center" class="mt12">
+      <button class="btn btn-primary btn-big" id="installBtn" onclick="install()">一键安装</button>
+      <div class="hint" style="margin-top:8px" id="installHint">安装全自动完成，无需其他操作</div>
+    </div>
+    <div class="steps hidden" id="steps"></div>
+  </div>
+
+  <!-- ima 配置卡（安装成功后显示） -->
+  <div id="imaCardBox" class="card hidden">
+    <h2><span class="no">✓</span>已就绪 —— 在 ima 中完成最后一步</h2>
+    <div class="hint">ima 的模型配置保存在腾讯云端，需在 ima 界面填一次。点击各行「复制」，按下方步骤粘贴：</div>
+    <div class="imacard">
+      <div class="head">ima → 设置 → 模型管理 → 添加自定义模型</div>
+      <div class="body">
+        <div class="kv"><div class="k">模型厂商</div><div class="v">自定义</div></div>
+        <div class="kv" id="kvUrl"><div class="k">接口地址</div><div class="v" id="vUrl">—</div><button class="btn btn-ghost btn-mini copy" onclick="cp('vUrl')">复制</button></div>
+        <div class="kv"><div class="k">API Key</div><div class="v" id="vKey">—</div><button class="btn btn-ghost btn-mini copy" onclick="cp('vKey')">复制</button></div>
+        <div class="kv"><div class="k">模型名称</div><div class="v" id="vModel">—</div><button class="btn btn-ghost btn-mini copy" onclick="cp('vModel')">复制</button></div>
+      </div>
+    </div>
+    <div class="row mt12">
+      <button class="btn btn-primary" id="verifyBtn" onclick="armVerify()">我已填好，开始验证</button>
+      <span id="verifyMsg" style="font-size:13px;color:var(--gray)">填完后点这里，然后去 ima 随便问一句话</span>
+    </div>
+    <div class="banner ok hidden mt12" id="verifiedBanner">✅ 验证通过！ima 已成功接通你的本地/局域网模型，可以正常使用了。</div>
+  </div>
+
+  <!-- 状态面板（常驻） -->
+  <div class="card" id="statusCard">
+    <h2>运行状态</h2>
+    <div class="hint">公网入口健康巡检每 30 秒一次；入口异常会自动恢复并在顶部提醒</div>
+    <div class="chips" id="healthChips"></div>
+    <details class="adv">
+      <summary>高级：日志 / 重启入口 / 轮换 Key</summary>
+      <div class="row mt8">
+        <button class="btn btn-ghost btn-mini" onclick="restartEntrance('tailscale')">重启 Tailscale 入口</button>
+        <button class="btn btn-ghost btn-mini" onclick="restartEntrance('cloudflared')">重启 Cloudflare 隧道</button>
+        <button class="btn btn-ghost btn-mini" onclick="rotateKey()">轮换 API Key</button>
+      </div>
+      <pre class="logs mt8" id="logs">…</pre>
+    </details>
+  </div>
+
+  <div class="foot">ImaLocalHub v<span id="ver"></span> · 全链路出站连接，不开放任何入站端口</div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
