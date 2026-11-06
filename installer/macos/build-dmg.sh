@@ -6,11 +6,13 @@ ARCH="${1:?arm64|x64}"
 NODE_VER="${2:?node version}"
 OUT="${3:?output dmg path}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-STAGE="$(mktemp -d)"
+STAGE="$ROOT/build-stage"
 APP="$STAGE/ImaLocalHub.app"
 RES="$APP/Contents/Resources"
 
-mkdir -p "$APP/Contents/MacOS" "$RES/app" "$RES/runtime"
+echo "=== disk before ==="; df -h . | tail -1
+rm -rf "$STAGE"
+mkdir -p "$APP/Contents/MacOS" "$RES/app" "$RES/runtime/bin"
 
 # 1) 应用文件
 cp "$ROOT/hub.js" "$ROOT/package.json" "$ROOT/README.md" "$RES/app/"
@@ -19,15 +21,16 @@ cp -r "$ROOT/lib" "$ROOT/public" "$RES/app/"
 cp "$ROOT/installer/macos/ImaLocalHub-launcher.sh" "$APP/Contents/MacOS/ImaLocalHub"
 chmod +x "$APP/Contents/MacOS/ImaLocalHub"
 cp "$ROOT/installer/macos/Info.plist" "$APP/Contents/Info.plist"
-# 3) 内嵌 Node 运行时
+# 3) 内嵌 Node 运行时（只取 node 单文件，流式解出，避免解压整个发行包占满磁盘）
 curl -fsSL -o /tmp/node.tar.gz "https://nodejs.org/dist/v${NODE_VER}/node-v${NODE_VER}-darwin-${ARCH}.tar.gz"
-tar -xzf /tmp/node.tar.gz -C /tmp
-cp -r "/tmp/node-v${NODE_VER}-darwin-${ARCH}/bin" "$RES/runtime/"
+tar -xzOf /tmp/node.tar.gz "node-v${NODE_VER}-darwin-${ARCH}/bin/node" > "$RES/runtime/bin/node"
 chmod +x "$RES/runtime/bin/node"
+rm -f /tmp/node.tar.gz
+file "$RES/runtime/bin/node"
 # 4) 图标（如有 PNG 则生成 icns）
 if [ -f "$ROOT/installer/macos/AppIcon.png" ]; then
   ICONSET="$STAGE/icon.iconset"; mkdir -p "$ICONSET"
-  for size in 16 32 64 128 256 512; do
+  for size in 16 32 128 256 512; do
     sips -z $size $size "$ROOT/installer/macos/AppIcon.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
     double=$((size*2))
     if [ $double -le 1024 ]; then
@@ -49,5 +52,7 @@ ImaLocalHub 安装（macOS）
 EOF
 # 6) 生成 dmg（含 /Applications 快捷方式）
 ln -s /Applications "$STAGE/Applications"
+echo "=== disk before hdiutil ==="; df -h . | tail -1
 hdiutil create -volname "ImaLocalHub" -srcfolder "$STAGE" -ov -format UDZO "$OUT"
+rm -rf "$STAGE"
 echo "DMG built: $OUT"
