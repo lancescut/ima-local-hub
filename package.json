@@ -1,6 +1,6 @@
 {
   "name": "ima-local-hub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ImaLocalHub - 让 ima 知识库接入本地/局域网大模型的一站式工具",
   "main": "hub.js",
   "scripts": {

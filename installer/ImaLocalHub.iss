@@ -3,7 +3,7 @@
 ; 免管理员（PrivilegesRequired=lowest），内嵌 Node 运行时，双击即装
 
 #define MyAppName "ImaLocalHub"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "lancescut"
 #define MyAppExeName "ImaLocalHub"
 
@@ -22,7 +22,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName={#MyAppName}
-UninstallDisplayIcon={app}\hub.js
+UninstallDisplayIcon={app}\icon.ico
 
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
@@ -35,12 +35,13 @@ Source: "..\lib\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs
 Source: "..\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs
 Source: "runtime-win\node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "launch-hub.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; 开机自启（用户启动文件夹）
-Name: "{userstartup}\ImaLocalHub"; Filename: "{app}\launch-hub.bat"; WorkingDir: "{app}"; Comment: "ima 本地模型服务"
+Name: "{userstartup}\ImaLocalHub"; Filename: "{app}\launch-hub.bat"; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; Comment: "ima 本地模型服务"
 ; 开始菜单快捷方式（打开管理页）
-Name: "{userprograms}\ImaLocalHub"; Filename: "http://127.0.0.1:18080"; Comment: "打开 ImaLocalHub 管理页"
+Name: "{userprograms}\ImaLocalHub"; Filename: "http://127.0.0.1:18080"; IconFilename: "{app}\icon.ico"; Comment: "打开 ImaLocalHub 管理页"
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

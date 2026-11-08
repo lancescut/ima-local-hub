@@ -42,11 +42,12 @@ jobs:
       - name: Build dmg
         run: |
           chmod +x installer/macos/build-dmg.sh
-          installer/macos/build-dmg.sh ${{ matrix.arch }} 22.14.0 "ImaLocalHub-1.0.0-macos-${{ matrix.arch }}.dmg"
+          VERSION=$(node -p "require('./package.json').version")
+          installer/macos/build-dmg.sh ${{ matrix.arch }} 22.14.0 "ImaLocalHub-${VERSION}-macos-${{ matrix.arch }}.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-dmg-${{ matrix.arch }}
-          path: ImaLocalHub-1.0.0-macos-*.dmg
+          path: ImaLocalHub-*-macos-*.dmg
 
   release:
     name: Create Release

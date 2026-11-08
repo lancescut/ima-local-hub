@@ -1,84 +1,105 @@
-// 生成深红 iH 图标：PS 画 256 原图 + 缩放 16/32/48 → 标准多尺寸 BMP ICO
+// Convert the approved mountain-window PNG into Windows, web and macOS icons.
+// Run on Windows: node installer/make-icon.js
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
-const SIZES = [16, 32, 48, 256];
-const tmp = os.tmpdir();
-const binFor = s => path.join(tmp, `ihicon_${s}.bin`).replace(/\\/g, '\\\\');
-const pngPath = path.join(tmp, 'AppIcon.png').replace(/\\/g, '\\\\');
+const SIZES = [16, 24, 32, 48, 64, 128, 256];
+const source = path.join(__dirname, 'brand-icon.png');
+const publicDir = path.join(__dirname, '..', 'public');
+if (!fs.existsSync(source)) throw new Error('Missing approved installer/brand-icon.png');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ima-brand-'));
+const psQuote = s => "'" + s.replace(/'/g, "''") + "'";
+const ps = [
+  "$ErrorActionPreference = 'Stop'",
+  'Add-Type -AssemblyName System.Drawing',
+  '$source = [System.Drawing.Image]::FromFile(' + psQuote(source) + ')',
+  'try {',
+  '  foreach ($sz in @(' + [...SIZES, 1024].join(',') + ')) {',
+  '    $scaled = New-Object System.Drawing.Bitmap($sz, $sz, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)',
+  '    $g = [System.Drawing.Graphics]::FromImage($scaled)',
+  '    try {',
+  '      $g.Clear([System.Drawing.Color]::Transparent)',
+  "      $g.CompositingMode = 'SourceCopy'",
+  "      $g.InterpolationMode = 'HighQualityBicubic'",
+  "      $g.PixelOffsetMode = 'HighQuality'",
+  '      $g.DrawImage($source, 0, 0, $sz, $sz)',
+  '    } finally { $g.Dispose() }',
+  '    try {',
+  '      $scaled.Save((Join-Path ' + psQuote(tmp) + ' "$sz.png"), [System.Drawing.Imaging.ImageFormat]::Png)',
+  '      if ($sz -le 256) {',
+  '        $rect = New-Object System.Drawing.Rectangle(0, 0, $sz, $sz)',
+  '        $bd = $scaled.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)',
+  '        try {',
+  '          $buf = New-Object byte[] ($sz * $sz * 4)',
+  '          for ($y = 0; $y -lt $sz; $y++) {',
+  '            $ptr = [IntPtr]::Add($bd.Scan0, $y * $bd.Stride)',
+  '            [System.Runtime.InteropServices.Marshal]::Copy($ptr, $buf, $y * $sz * 4, $sz * 4)',
+  '          }',
+  '          [System.IO.File]::WriteAllBytes((Join-Path ' + psQuote(tmp) + ' "$sz.bin"), $buf)',
+  '        } finally { $scaled.UnlockBits($bd) }',
+  '      }',
+  '    } finally { $scaled.Dispose() }',
+  '  }',
+  '} finally { $source.Dispose() }'
+].join('\n');
 
-const sizeList = SIZES.join(',');
-const ps = `
-Add-Type -AssemblyName System.Drawing
-$bmp = New-Object System.Drawing.Bitmap(256,256)
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.SmoothingMode = 'AntiAlias'; $g.TextRenderingHint = 'AntiAliasGridFit'
-$g.Clear([System.Drawing.Color]::FromArgb(0,0,0,0))
-$brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255,166,30,42))
-$p = New-Object System.Drawing.Drawing2D.GraphicsPath
-$r=56; $s=20
-$p.AddArc($s,$s,$r,$r,180,90); $p.AddArc(256-$s-$r,$s,$r,$r,270,90); $p.AddArc(256-$s-$r,256-$s-$r,$r,$r,0,90); $p.AddArc($s,256-$s-$r,$r,$r,90,90); $p.CloseFigure()
-$g.FillPath($brush,$p)
-$font = New-Object System.Drawing.Font('Segoe UI',108,[System.Drawing.FontStyle]::Bold)
-$fmt = New-Object System.Drawing.StringFormat; $fmt.Alignment='Center'; $fmt.LineAlignment='Center'
-$g.DrawString('iH',$font,[System.Drawing.Brushes]::White,128,132,$fmt)
-$g.Dispose()
-# 导出 512px PNG（macOS icns 用）
-$big = New-Object System.Drawing.Bitmap(512,512)
-$g3 = [System.Drawing.Graphics]::FromImage($big)
-$g3.InterpolationMode = 'HighQualityBicubic'
-$g3.DrawImage($bmp,0,0,512,512); $g3.Dispose()
-$big.Save('${pngPath}',[System.Drawing.Imaging.ImageFormat]::Png)
-foreach ($sz in @(${sizeList.split(',').join(',')})) {
-  $scaled = New-Object System.Drawing.Bitmap($sz,$sz)
-  $g2 = [System.Drawing.Graphics]::FromImage($scaled)
-  $g2.InterpolationMode = 'HighQualityBicubic'
-  $g2.DrawImage($bmp,0,0,$sz,$sz); $g2.Dispose()
-  $rect = New-Object System.Drawing.Rectangle(0,0,$sz,$sz)
-  $bd = $scaled.LockBits($rect,[System.Drawing.Imaging.ImageLockMode]::ReadOnly,[System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-  $out = [System.IO.File]::Create('ihicon_' + $sz + '.bin')
-  $buf = New-Object byte[] ($bd.Stride * $sz)
-  [System.Runtime.InteropServices.Marshal]::Copy($bd.Scan0,$buf,0,$buf.Length)
-  $out.Write($buf,0,$buf.Length); $out.Close()
-  $scaled.UnlockBits($bd); $scaled.Dispose()
+try {
+  const scriptPath = path.join(tmp, 'convert.ps1');
+  fs.writeFileSync(scriptPath, '\uFEFF' + ps, 'utf8');
+  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+    stdio: 'inherit', windowsHide: true
+  });
+  const entries = SIZES.map(size => {
+    const raw = fs.readFileSync(path.join(tmp, size + '.bin'));
+    const stride = size * 4;
+    const xor = Buffer.alloc(stride * size);
+    const maskStride = Math.ceil(size / 32) * 4;
+    const mask = Buffer.alloc(maskStride * size);
+    for (let y = 0; y < size; y++) {
+      const bottomRow = size - 1 - y;
+      raw.copy(xor, bottomRow * stride, y * stride, (y + 1) * stride);
+      for (let x = 0; x < size; x++) {
+        if (raw[y * stride + x * 4 + 3] === 0) {
+          mask[bottomRow * maskStride + (x >> 3)] |= 0x80 >> (x & 7);
+        }
+      }
+    }
+    const header = Buffer.alloc(40);
+    header.writeUInt32LE(40, 0);
+    header.writeInt32LE(size, 4);
+    header.writeInt32LE(size * 2, 8);
+    header.writeUInt16LE(1, 12);
+    header.writeUInt16LE(32, 14);
+    header.writeUInt32LE(xor.length + mask.length, 20);
+    return { size, data: Buffer.concat([header, xor, mask]) };
+  });
+  const ico = Buffer.alloc(6 + entries.length * 16 + entries.reduce((sum, e) => sum + e.data.length, 0));
+  ico.writeUInt16LE(1, 2);
+  ico.writeUInt16LE(entries.length, 4);
+  let offset = 6 + entries.length * 16;
+  entries.forEach((entry, index) => {
+    const start = 6 + index * 16;
+    ico[start] = ico[start + 1] = entry.size === 256 ? 0 : entry.size;
+    ico.writeUInt16LE(1, start + 4);
+    ico.writeUInt16LE(32, start + 6);
+    ico.writeUInt32LE(entry.data.length, start + 8);
+    ico.writeUInt32LE(offset, start + 12);
+    entry.data.copy(ico, offset);
+    offset += entry.data.length;
+  });
+  fs.writeFileSync(path.join(__dirname, 'icon.ico'), ico);
+  fs.writeFileSync(path.join(publicDir, 'favicon.ico'), ico);
+  fs.copyFileSync(path.join(tmp, '256.png'), path.join(publicDir, 'logo.png'));
+  fs.copyFileSync(path.join(tmp, '1024.png'), path.join(__dirname, 'macos', 'AppIcon.png'));
+  console.log('Mountain-window icons built:', SIZES.join('/'), 'px ICO, 256 px web PNG, 1024 px macOS PNG');
+} finally {
+  // Only unlink this conversion's known files; never recursively delete a computed path.
+  for (const name of ['convert.ps1', ...[...SIZES, 1024].map(s => s + '.png'), ...SIZES.map(s => s + '.bin')]) {
+    const file = path.join(tmp, name);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
+  fs.rmdirSync(tmp);
 }
-`;
-execFileSync('powershell', ['-NoProfile', '-Command', ps], { stdio: 'ignore', cwd: tmp });
-
-// 组装多尺寸 ICO（BMP 条目）
-const entries = SIZES.map(sz => {
-  const raw = fs.readFileSync(binFor(sz).replace(/\\\\/g, '\\'));
-  const stride = sz * 4;
-  const xor = Buffer.alloc(stride * sz);
-  for (let y = 0; y < sz; y++) raw.copy(xor, (sz - 1 - y) * stride, y * stride, y * stride + stride);
-  const andRowBytes = Math.ceil(sz / 8 / 4) * 4;          // 32bit 对齐
-  const and = Buffer.alloc(andRowBytes * sz);
-  const header = Buffer.alloc(40);
-  header.writeUInt32LE(40, 0);
-  header.writeInt32LE(sz, 4); header.writeInt32LE(sz * 2, 8);
-  header.writeUInt16LE(1, 12); header.writeUInt16LE(32, 14);
-  header.writeUInt32LE(xor.length + and.length, 20);
-  return { size: sz, data: Buffer.concat([header, xor, and]) };
-});
-
-const total = entries.reduce((a, e) => a + e.data.length, 0);
-const ico = Buffer.alloc(6 + 16 * entries.length + total);
-ico.writeUInt16LE(0, 0); ico.writeUInt16LE(1, 2); ico.writeUInt16LE(entries.length, 4);
-let off = 6 + 16 * entries.length;
-entries.forEach((e, i) => {
-  const b = 6 + 16 * i;                 // ICONDIRENTRY 起点
-  const dim = e.size === 256 ? 0 : e.size;
-  ico[b] = dim; ico[b + 1] = dim;       // 宽/高（256 用 0 表示）
-  ico[b + 2] = 0; ico[b + 3] = 0;       // colorCount / reserved
-  ico.writeUInt16LE(1, b + 4);          // planes
-  ico.writeUInt16LE(32, b + 6);         // bpp
-  ico.writeUInt32LE(e.data.length, b + 8); // bytesInRes
-  ico.writeUInt32LE(off, b + 12);       // imageOffset
-  e.data.copy(ico, off); off += e.data.length;
-});
-fs.writeFileSync(path.join(__dirname, 'icon.ico'), ico);
-fs.copyFileSync(pngPath.replace(/\\\\/g, '\\'), path.join(__dirname, 'macos', 'AppIcon.png'));
-console.log('icon.ico written:', ico.length, 'bytes, sizes:', SIZES.join('/'), '+ AppIcon.png');

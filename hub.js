@@ -32,7 +32,8 @@ function alert(type, msg) {
 // ---------- 通知（尽力而为） ----------
 function notify(title, msg) {
   if (process.platform !== 'win32') return;
-  const ps = `Add-Type -AssemblyName System.Windows.Forms; $n=New-Object System.Windows.Forms.NotifyIcon; $n.Icon=[System.Drawing.SystemIcons]::Information; $n.Visible=$true; $n.ShowBalloonTip(8000,'${title.replace(/'/g, '')}','${msg.replace(/'/g, '')}', 'Info'); Start-Sleep 6; $n.Dispose()`;
+  const clean = s => String(s).replace(/[^a-zA-Z0-9 .,:;()\-_/\\\u4e00-\u9fff]/g, '').slice(0, 180); // 白名单字符，防注入
+  const ps = `Add-Type -AssemblyName System.Windows.Forms; $n=New-Object System.Windows.Forms.NotifyIcon; $n.Icon=[System.Drawing.SystemIcons]::Information; $n.Visible=$true; $n.ShowBalloonTip(8000,'${clean(title)}','${clean(msg)}', 'Info'); Start-Sleep 6; $n.Dispose()`;
   try { execFile('powershell', ['-NoProfile', '-Command', ps], { timeout: 15000, windowsHide: true }, () => {}); } catch {}
 }
 
@@ -175,6 +176,29 @@ async function handleUi(req, res) {
   const u = new URL(req.url, 'http://x');
   const json = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(obj)); };
 
+  // ---- 本地管理接口防护：Host 白名单（防 DNS rebinding）+ 浏览器来源校验（防 CSRF）----
+  const allowedHosts = new Set([`127.0.0.1:${cfg.ports.ui}`, `localhost:${cfg.ports.ui}`, `[::1]:${cfg.ports.ui}`]);
+  const host = (req.headers.host || '').toLowerCase();
+  if (!allowedHosts.has(host)) {
+    log(`[ui-block] 非法 Host: ${host || '(空)'}`);
+    res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'forbidden host' }));
+    return;
+  }
+  const secFetchSite = req.headers['sec-fetch-site'];
+  const origin = req.headers['origin'];
+  if (secFetchSite === 'cross-site' || (origin && !origin.startsWith(`http://127.0.0.1:${cfg.ports.ui}`) && !origin.startsWith(`http://localhost:${cfg.ports.ui}`))) {
+    log(`[ui-block] 跨站请求被拒: origin=${origin || '-'} sfs=${secFetchSite || '-'}`);
+    res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'cross-site request blocked' }));
+    return;
+  }
+  if (req.method !== 'GET' && !String(req.headers['content-type'] || '').includes('application/json')) {
+    res.writeHead(415, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'content-type must be application/json' }));
+    return;
+  }
+
   if (u.pathname === '/' || u.pathname === '/index.html') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(fs.readFileSync(path.join(__dirname, 'public', 'index.html')));
@@ -182,6 +206,12 @@ async function handleUi(req, res) {
   }
   if (u.pathname === '/app.js') { res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' }); res.end(fs.readFileSync(path.join(__dirname, 'public', 'app.js'))); return; }
   if (u.pathname === '/style.css') { res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' }); res.end(fs.readFileSync(path.join(__dirname, 'public', 'style.css'))); return; }
+  const imageType = { '/logo.png': 'image/png', '/favicon.ico': 'image/x-icon' }[u.pathname];
+  if (imageType) {
+    res.writeHead(200, { 'content-type': imageType });
+    res.end(fs.readFileSync(path.join(__dirname, 'public', u.pathname.slice(1))));
+    return;
+  }
 
   if (u.pathname === '/api/status' && req.method === 'GET') {
     json(200, {
@@ -206,6 +236,21 @@ async function handleUi(req, res) {
   if (u.pathname === '/api/install' && req.method === 'POST') {
     const body = await readBody(req);
     let input; try { input = JSON.parse(body); } catch { json(400, { error: 'bad json' }); return; }
+    // 后端白名单校验（防任意后端注入：type 受限、ollama 仅本机、openai 必须 http(s)）
+    const errs = [];
+    if (Array.isArray(input.backends)) {
+      input.backends = input.backends.filter(b => b && typeof b === 'object');
+      for (const b of input.backends) {
+        if (b.type === 'ollama') {
+          if (b.host && b.host !== '127.0.0.1' && b.host !== 'localhost') errs.push(`ollama 后端仅允许本机（收到 ${b.host}）`);
+        } else if (b.type === 'openai') {
+          if (!/^https?:\/\/[^\s]+$/.test(b.url || '')) errs.push(`openai 后端 url 非法: ${b.url}`);
+          if (b.path && !/^\/[\w\-./]*$/.test(b.path)) errs.push('openai 后端 path 非法');
+        } else errs.push(`未知后端类型: ${b.type}`);
+        if (b.name && !/^[\w\-.]{1,64}$/.test(b.name)) errs.push(`后端名非法: ${b.name}`);
+      }
+    } else input.backends = [];
+    if (errs.length) { json(400, { error: 'backends invalid', details: errs }); return; }
     if (S.install && !S.install.done) { json(409, { error: '安装进行中' }); return; }
     runInstall(input);
     json(200, { started: true });

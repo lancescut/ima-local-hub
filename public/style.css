@@ -16,7 +16,7 @@ html, body { background: var(--bg-soft); color: var(--ink); font-family: var(--f
 .hero { background: linear-gradient(135deg, var(--red-deep) 0%, var(--red) 62%, #C43A46 100%); color: #fff; padding: 30px 0 84px; }
 .hero .wrap { padding-bottom: 0; }
 .brand { display: flex; align-items: center; gap: 14px; }
-.logo { width: 44px; height: 44px; border-radius: 10px; background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; letter-spacing: .5px; border: 1px solid rgba(255,255,255,.25); }
+.logo { width: 44px; height: 44px; display: block; flex: none; object-fit: contain; }
 .brand h1 { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
 .brand .sub { font-size: 13px; opacity: .82; margin-top: 1px; }
 .hero-status { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
